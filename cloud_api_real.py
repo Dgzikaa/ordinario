@@ -92,13 +92,24 @@ def login_contahub():
         
         headers = {
             'Content-Type': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive'
         }
         
-        response = session.post(LOGIN_URL, json=payload, headers=headers, timeout=30)
+        logger.info(f"Fazendo POST para: {LOGIN_URL}")
+        logger.info(f"Payload: {payload}")
+        
+        response = session.post(LOGIN_URL, json=payload, headers=headers, timeout=60)
+        
+        logger.info(f"Status code: {response.status_code}")
+        logger.info(f"Response text: {response.text[:500]}")
         
         if response.status_code == 200:
             data = response.json()
+            logger.info(f"Response data: {data}")
             if data.get('success'):
                 logger.info(f"Login realizado com sucesso para {CONTAHUB_EMAIL}")
                 return session
@@ -106,11 +117,11 @@ def login_contahub():
                 logger.error(f"Falha no login: {data.get('message', 'Erro desconhecido')}")
                 return None
         else:
-            logger.error(f"Erro HTTP no login: {response.status_code}")
+            logger.error(f"Erro HTTP no login: {response.status_code} - {response.text}")
             return None
             
     except Exception as e:
-        logger.error(f"Erro durante login: {str(e)}")
+        logger.error(f"Erro durante login: {str(e)}", exc_info=True)
         return None
 
 def fetch_data_contahub(session, module_name, start_date, end_date):
