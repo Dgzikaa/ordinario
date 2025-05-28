@@ -84,44 +84,155 @@ def login_contahub():
         
         session = requests.Session()
         
+        # Headers mais completos para parecer com um browser real
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-site',
+            'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"'
+        })
+        
         payload = {
             "usr_email": CONTAHUB_EMAIL,
             "usr_senha": CONTAHUB_SENHA,
             "emp": 0
         }
         
-        headers = {
+        logger.info(f"Fazendo POST para: {LOGIN_URL}")
+        logger.info(f"Payload email: {payload['usr_email']}")
+        logger.info(f"Payload senha: {'*' * len(payload['usr_senha'])}")
+        
+        # Primeiro, visitar a página principal para estabelecer sessão
+        try:
+            logger.info("Fazendo GET inicial para estabelecer sessão...")
+            main_page = session.get('https://sp.contahub.com/', timeout=30)
+            logger.info(f"GET principal - Status: {main_page.status_code}")
+            logger.info(f"Cookies após GET principal: {dict(session.cookies)}")
+            
+            # Aguardar um pouco para simular comportamento humano
+            time.sleep(2)
+            
+        except Exception as e:
+            logger.warning(f"Erro no GET inicial (continuando): {str(e)}")
+        
+        # Tentar login
+        headers_login = {
             'Content-Type': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive'
+            'Origin': 'https://sp.contahub.com',
+            'Referer': 'https://sp.contahub.com/',
+            'X-Requested-With': 'XMLHttpRequest'
         }
         
-        logger.info(f"Fazendo POST para: {LOGIN_URL}")
-        logger.info(f"Payload: {payload}")
-        
-        response = session.post(LOGIN_URL, json=payload, headers=headers, timeout=60)
+        response = session.post(LOGIN_URL, json=payload, headers=headers_login, timeout=60)
         
         logger.info(f"Status code: {response.status_code}")
-        logger.info(f"Response text: {response.text[:500]}")
+        logger.info(f"Response headers: {dict(response.headers)}")
+        logger.info(f"Response cookies: {dict(session.cookies)}")
+        logger.info(f"Response text (primeiros 1000 chars): {response.text[:1000]}")
         
         if response.status_code == 200:
-            data = response.json()
-            logger.info(f"Response data: {data}")
-            if data.get('success'):
-                logger.info(f"Login realizado com sucesso para {CONTAHUB_EMAIL}")
-                return session
-            else:
-                logger.error(f"Falha no login: {data.get('message', 'Erro desconhecido')}")
+            try:
+                data = response.json()
+                logger.info(f"Response JSON completo: {data}")
+                
+                if data.get('success'):
+                    logger.info(f"Login realizado com sucesso para {CONTAHUB_EMAIL}")
+                    # Testar se a sessão realmente funciona fazendo uma requisição de teste
+                    test_url = f"{API_URL}/test"
+                    try:
+                        test_response = session.get(test_url, timeout=30)
+                        logger.info(f"Teste de sessão - Status: {test_response.status_code}")
+                    except Exception as e:
+                        logger.warning(f"Erro no teste de sessão: {str(e)}")
+                    
+                    return session
+                else:
+                    error_msg = data.get('message', 'Erro desconhecido')
+                    logger.error(f"Falha no login - Resposta: {error_msg}")
+                    logger.error(f"Data completo: {data}")
+                    return None
+                    
+            except json.JSONDecodeError as e:
+                logger.error(f"Erro ao decodificar JSON: {str(e)}")
+                logger.error(f"Response raw: {response.text}")
+                return None
+                
+        elif response.status_code == 429:
+            logger.error("Rate limit atingido - muitas tentativas de login")
+            return None
+        elif response.status_code == 403:
+            logger.error("Acesso negado - possível bloqueio de IP")
+            return None
+        else:
+            logger.error(f"Erro HTTP no login: {response.status_code}")
+            logger.error(f"Response headers: {dict(response.headers)}")
+            logger.error(f"Response text: {response.text}")
+            return None
+            
+    except requests.exceptions.Timeout as e:
+        logger.error(f"Timeout durante login: {str(e)}")
+        return None
+    except requests.exceptions.ConnectionError as e:
+        logger.error(f"Erro de conexão durante login: {str(e)}")
+        return None
+    except Exception as e:
+        logger.error(f"Erro durante login: {str(e)}", exc_info=True)
+        return None
+
+def login_contahub_alternative():
+    """Método alternativo de login tentando replicar exatamente o testefinal.py local"""
+    try:
+        logger.info(f"Tentando login alternativo no ContaHub com email: {CONTAHUB_EMAIL}")
+        
+        session = requests.Session()
+        
+        # Headers simples como no testefinal.py local
+        session.headers.update({
+            'Content-Type': 'application/json'
+        })
+        
+        payload = {
+            "usr_email": CONTAHUB_EMAIL,
+            "usr_senha": CONTAHUB_SENHA,
+            "emp": 0
+        }
+        
+        logger.info(f"Login alternativo - POST para: {LOGIN_URL}")
+        
+        # Login direto sem GET inicial
+        response = session.post(LOGIN_URL, json=payload, timeout=30)
+        
+        logger.info(f"Login alternativo - Status: {response.status_code}")
+        logger.info(f"Login alternativo - Response: {response.text[:500]}")
+        
+        if response.status_code == 200:
+            try:
+                data = response.json()
+                logger.info(f"Login alternativo - JSON: {data}")
+                
+                if data.get('success'):
+                    logger.info(f"Login alternativo realizado com sucesso para {CONTAHUB_EMAIL}")
+                    return session
+                else:
+                    logger.error(f"Login alternativo falhou: {data.get('message', 'Erro desconhecido')}")
+                    return None
+                    
+            except json.JSONDecodeError as e:
+                logger.error(f"Login alternativo - Erro JSON: {str(e)}")
                 return None
         else:
-            logger.error(f"Erro HTTP no login: {response.status_code} - {response.text}")
+            logger.error(f"Login alternativo - Erro HTTP: {response.status_code}")
             return None
             
     except Exception as e:
-        logger.error(f"Erro durante login: {str(e)}", exc_info=True)
+        logger.error(f"Erro no login alternativo: {str(e)}", exc_info=True)
         return None
 
 def fetch_data_contahub(session, module_name, start_date, end_date):
@@ -311,12 +422,20 @@ def execute_testefinal_real():
     try:
         logger.info("🔐 Fazendo login no ContaHub...")
         
-        # 1. Login no ContaHub
+        # 1. Tentar login principal
         session = login_contahub()
+        
+        # 2. Se falhar, tentar método alternativo
         if not session:
+            logger.info("🔄 Tentando método de login alternativo...")
+            session = login_contahub_alternative()
+        
+        if not session:
+            error_msg = 'Falha ao fazer login no ContaHub - tentados ambos os métodos'
+            logger.error(f"❌ {error_msg}")
             return {
                 'success': False,
-                'error': 'Falha ao fazer login no ContaHub'
+                'error': error_msg
             }
         
         logger.info("✅ Login no ContaHub realizado com sucesso")
@@ -399,6 +518,83 @@ def get_logs():
             'timestamp': datetime.now().isoformat()
         }), 500
 
+@app.route('/debug-login', methods=['GET'])
+def debug_login():
+    """Endpoint para debug do login ContaHub"""
+    try:
+        logger.info("🔍 Testando login ContaHub...")
+        debug_info = {
+            'timestamp': datetime.now().isoformat(),
+            'environment': 'cloud',
+            'contahub_email': CONTAHUB_EMAIL,
+            'login_url': LOGIN_URL,
+            'tests': {}
+        }
+        
+        # Teste 1: Método principal
+        logger.info("🔍 Teste 1: Método principal")
+        session1 = login_contahub()
+        debug_info['tests']['method_main'] = {
+            'success': session1 is not None,
+            'message': 'Login principal funcionou' if session1 else 'Login principal falhou'
+        }
+        
+        # Teste 2: Método alternativo
+        logger.info("🔍 Teste 2: Método alternativo")
+        session2 = login_contahub_alternative()
+        debug_info['tests']['method_alternative'] = {
+            'success': session2 is not None,
+            'message': 'Login alternativo funcionou' if session2 else 'Login alternativo falhou'
+        }
+        
+        # Teste 3: Conectividade básica
+        logger.info("🔍 Teste 3: Conectividade básica")
+        try:
+            test_response = requests.get('https://sp.contahub.com/', timeout=10)
+            connectivity_test = {
+                'success': test_response.status_code == 200,
+                'status_code': test_response.status_code,
+                'message': f'Conectividade OK (status {test_response.status_code})' if test_response.status_code == 200 else f'Problema de conectividade (status {test_response.status_code})'
+            }
+        except Exception as e:
+            connectivity_test = {
+                'success': False,
+                'error': str(e),
+                'message': f'Erro de conectividade: {str(e)}'
+            }
+        
+        debug_info['tests']['connectivity'] = connectivity_test
+        
+        # Resultado final
+        any_success = any(test.get('success', False) for test in debug_info['tests'].values())
+        
+        if any_success:
+            debug_info['overall_status'] = 'success'
+            debug_info['message'] = 'Pelo menos um método de login funcionou!'
+            return jsonify(debug_info)
+        else:
+            debug_info['overall_status'] = 'error'
+            debug_info['message'] = 'Todos os métodos de login falharam'
+            return jsonify(debug_info), 500
+            
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/debug-env', methods=['GET'])
+def debug_env():
+    """Endpoint para verificar variáveis de ambiente"""
+    return jsonify({
+        'contahub_email': CONTAHUB_EMAIL,
+        'contahub_senha': CONTAHUB_SENHA[:3] + '***',  # Só os 3 primeiros caracteres
+        'sheet_name': SHEET_NAME,
+        'google_credentials_loaded': bool(GOOGLE_CREDENTIALS_JSON != '{}'),
+        'timestamp': datetime.now().isoformat()
+    })
+
 if __name__ == '__main__':
     # Configurações para cloud
     port = int(os.getenv('PORT', 5000))
@@ -409,6 +605,8 @@ if __name__ == '__main__':
     print(f"   GET  /test")
     print(f"   POST /execute-testefinal")
     print(f"   GET  /logs")
+    print(f"   GET  /debug-login")
+    print(f"   GET  /debug-env")
     print(f"🔐 API Key: {API_KEY}")
     print(f"📧 ContaHub Email: {CONTAHUB_EMAIL}")
     print(f"📊 Google Sheets: {SHEET_NAME}")
